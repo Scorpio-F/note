@@ -648,7 +648,7 @@ cv_show(res)
 
 - <a href="#yizhi" style='text-decoration:none'>3）应用非极大值（Non-Maximum Suppression）抑制，以消除边缘检测带来的杂散效应。</a>
 
-- 4）应用双阈值（Double-Threshold）检测来确定真实的和潜在的边缘。
+- <a href="#syz" style='text-decoration:none'>4）应用双阈值（Double-Threshold）检测来确定真实的和潜在的边缘。</a>
 
 - 5）通过抑制孤立的弱边缘最终完成边缘检测。
 
@@ -819,3 +819,211 @@ $$
 
 通常为了更加精确的计算，在跨越梯度方向的两个相邻像素之间使用**<u>线性插值</u>**来得到要比较的像素梯度，先举例如下：
 
+
+
+#### <span id='syz'>四、双阈值检测</span>
+
+​	在施加非极大值抑制后，剩余的像素可以更准确的表示图像中的实际边缘。然而，仍然存在由于噪声和颜色变化引起的一些边缘像素。为了解决这些杂散像素，必须用弱梯度值过滤边缘像素，并保留具有高梯度值的边缘像素，可以通过选择高低阈值来实现。如果边缘像素的梯度值高于高阈值，则将其标记为强边缘像素；如果边缘像素的梯度值小于高阈值并大于低阈值，则将其标记为弱边缘像素；如果边缘像素的梯度小于低阈值，则会被抑制。阈值的选择取决于给定输入图像的内容。
+
+![img](14312364-9fd20eec518316a4.png)
+
+
+
+```python
+#Canny边缘检测
+image = cv2.imread('img.jpg')
+v1 = cv2.Canny(image, 20, 150)
+v2 = cv2.Canny(image, 150, 255)
+
+v3 = np.hstack((v1, v2))
+cv_show(v3)
+
+```
+
+
+
+**打印结果**
+
+![image-20210302152330404](image-20210302152330404.png)
+
+
+
+
+
+## 20、图像金字塔
+
+​	图像金字塔是图像多尺度表达的一种，是一种以多分辨率来解释图像的有效但概念简单的结构。一幅图像的金字塔是一系列以金字塔形状排列的分辨率逐步降低，且来源于同一张原始图的图像集合。其通过梯次向下采样获得，直到达到某个终止条件才停止采样。我们将一层一层的图像比喻成金字塔，层级越高，则图像越少，分辨率越低。
+
+
+
+#### 高斯金字塔
+
+**下图为高斯金字塔的示意图，金字塔的底层为原始图像，每向上一层则是通过高斯滤波和1/2采样得到（去掉偶数行和列）。**
+
+![img](webp)
+
+**高斯金字塔的向下采样过程是：**
+
+- 1）对于给定图像先做一次高斯平滑处理，也就是使用一个大小为5x5的卷积核对图像进行卷积操作。
+  $$
+  \frac{1}{256}
+  \left[
+  \begin{matrix}
+  1 & 4 & 6 & 1 & 4 \\
+  4 & 16 & 24 & 16 & 4 \\
+  6 & 24 & 36 & 24 & 6 \\
+  4 & 16 & 24 & 16 & 4 \\
+  1 & 4 & 6 & 1 & 4 
+  \end{matrix}
+  \right]
+  $$
+
+- 2）然后再对图像采样，去除图像中的偶数行和偶数列后就得到一张图片。
+
+- 3）再对这样图片循环1）和2）操作就可以得到高斯金字塔。
+
+如模型可以看出，一次循环得到的图像即为G_(i+1)的图像，显而易见，结果图像只有原图的四分之一。通过对输入图像G_i(原始图像)不停迭代以上步骤就会得到整个金字塔。同时我们也可以看到，向下取样会逐渐丢失图像的信息。以上就是对图像的向下采样操作，即缩小图像。
+
+
+
+**高斯金字塔的向上采样过程是：**
+$$
+\left[
+\begin{matrix}
+10 & 30 \\
+56 & 96  \\
+\end{matrix}
+\right]
+\longrightarrow
+\left[
+\begin{matrix}
+10 &  0 & 30 & 0 \\
+0 & 0 & 0 & 0 \\
+56 & 0 & 96 & 0  \\
+0 & 0 & 0 & 0 
+\end{matrix}
+\right]
+$$
+
+- 1）将图像在每个方向扩大为原来的两倍，新增的行和列以0填充
+- 2）使用先前同样的内核（乘以4）与放大后的图像卷积，获得（新增图像的）近似值
+
+得到的图像即为放大后的图像，但是与原来的图像相比比较模糊，因为在缩放过程中已经丢失了一些信息，如果想在缩小和放大整个过程中减少信息的丢失，这些数据形成了**拉普拉斯金字塔**。
+
+**注意：上采样和下采样是非线性处理，不可逆，有损的处理！**
+
+
+
+```python
+image = cv2.imread('img.jpg')
+up = cv2.pyrUp(img) # 上采样
+down = cv2.pyrDown(img) # 下采样
+# 可以重复采样
+
+```
+
+
+
+#### 拉普拉斯金字塔
+
+拉普拉斯金字塔可以认为是残差金字塔，用来存储下采样后图片与原始图片的差异。我们知道，如果高斯金字塔中任意一张图Gi（比如G0为最初的高分辨率图像）先进行下采样得到图Down(Gi)，再进行上采样得到图Up(Down(Gi))，得到的Up(Down(Gi))与Gi是存在差异的，**因为下采样过程丢失的信息不能通过上采样来完全恢复**。
+
+<img src="image-20210302170909601.png" alt="image-20210302170909601" style="zoom: 67%;" />
+
+```python
+img = cv2.imread('img.jpg')
+down = cv2.pyrDown(img)
+down_up = cv2.pyrUp(down)
+l_1 = img - down_up
+cv_show(l_1)
+
+```
+
+
+
+## 21、图像轮廓
+
+
+
+```python
+# 语法说明
+cv2.findContours(img, mode, method)
+
+# 参数说明
+# mode：轮廓检测模式
+#	RETR_EXTERNAL	只检索最外面的轮廓
+#	RETR_LIST		检索所有的轮廓，并将其保存到一条链表当中
+#	RETR_CCOMP		检索所有的轮廓，并将他们组织为两层，顶层是各个部分的外部边界，第二层是空洞的边界
+#	RETR_TREE		检索所有的轮廓，并重构嵌套轮廓的整个层次
+# method：轮廓逼近方法
+#	CHAIN_APPROX_NONE	以Freeman链码的方式输出轮廓，所有其他方法输出多边形（顶点的序列）
+#	CHAIN_APPROX_SIMPLE	压缩水平的、垂直的和斜的部分，也就是函数只保留他们的终点部分
+
+```
+
+
+
+![image-20210302172148173](image-20210302172148173.png)
+
+
+
+**为了更高的准确率，使用二值图像**
+
+```python
+image = cv2.imread('img.jpg')
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+
+contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+```
+
+<img src="image-20210302173459667.png" alt="image-20210302173459667" style="zoom:50%;" />
+
+
+
+**绘制轮廓**
+
+```python
+# 传入绘制图像，轮廓，轮廓索引(-1代表所有)，颜色模式(B,G,R)，线条厚度
+# 原图需要copy，不然原图会变
+
+draw_img = image.copy()
+res = cv2.drawContours(draw_img, contours, -1, (0, 0, 255), 2)
+cv_show(res)
+
+```
+
+<img src="1.jpg" alt="1" style="zoom:50%;" />
+
+
+
+**轮廓特征**
+
+- 计算物体的周长、面积、质心、最小外接矩形等 
+- OpenCV函数：`cv2.contourArea()`, `cv2.arcLength()`, `cv2.approxPolyDP()`等 
+
+```python
+# 轮廓面积
+cnt = contours[0]
+area = cv2.contourArea(cnt)
+
+# 轮廓周长
+perimeter = cv2.arcLength(cnt, True) # 参数2表示轮廓是否封闭，显然我们的轮廓是封闭的，所以是True。
+
+# 外接矩形
+# 形状的外接矩形有两种，如下图，绿色的叫外接矩形，表示不考虑旋转并且能包含整个轮廓的矩形。蓝色的叫最小外接矩，考虑了旋转：
+x, y, w, h = cv2.boundingRect(cnt)
+res1 = cv2.rectangle(draw_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+cv_show(res1)
+
+# 最小外接矩形
+rect = cv2.minAreaRect(cnt)
+# 矩形四个角点取整
+box = np.int0(cv2.boxPoints(rect))
+# np.int0(x) 是把x取整的操作，比如377.93就会变成377，也可以用x.astype(np.int)
+res1 = cv2.drawContours(img_color1, [box], 0, (255, 0, 0), 2)
+cv_show(res1)
+```
+
+<img src="v2-b45072bef9ddf46657172abaf2f5cd29_720w.jpg" alt="img" style="zoom:50%;" />
