@@ -1027,3 +1027,22 @@ cv_show(res1)
 ```
 
 <img src="v2-b45072bef9ddf46657172abaf2f5cd29_720w.jpg" alt="img" style="zoom:50%;" />
+
+
+
+**形状匹配**
+
+`cv2.matchShapes()`可以检测两个形状之间的相似度，返回值越小，越相似
+
+```python
+cnt_a, cnt_b, cnt_c = contours[0], contours[1], contours[2]
+print(cv2.matchShapes(cnt_b, cnt_b, 1, 0.0))  # 0.0
+print(cv2.matchShapes(cnt_b, cnt_c, 1, 0.0))  # 2.17e-05
+print(cv2.matchShapes(cnt_b, cnt_a, 1, 0.0))  # 0.418
+
+```
+
+
+
+**轮廓近似**
+
